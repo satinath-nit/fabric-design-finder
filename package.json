@@ -1,0 +1,92 @@
+{
+  "name": "fabric-design-finder",
+  "version": "0.1.0",
+  "description": "Offline-first AI-powered fabric design finder for textile manufacturers.",
+  "main": "dist/main/main.js",
+  "author": "Fabric Design Finder",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "npm run build:main && npm run rebuild:electron && concurrently -k \"vite --config vite.renderer.config.ts --host 127.0.0.1\" \"wait-on tcp:5173 && electron .\"",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "test": "npm run rebuild:node && vitest run",
+    "rebuild:node": "npm rebuild better-sqlite3 --runtime=node",
+    "rebuild:electron": "electron-builder install-app-deps",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "lucide-react": "^0.468.0",
+    "onnxruntime-node": "^1.20.1",
+    "openai": "^4.76.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^2.1.8",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.fabricdesignfinder.desktop",
+    "productName": "Fabric Design Finder",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/models",
+        "to": "models",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/onnxruntime-node/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Fabric Design Finder Setup ${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.productivity"
+    }
+  }
+}

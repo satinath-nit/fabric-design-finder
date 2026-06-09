@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant UI as Renderer UI
+  participant Main as Electron Main
+  participant Search as Search Service
+  participant DB as SQLite
+  participant Model as ONNX Model Service
+  participant OpenAI as Optional OpenAI
+
+  UI->>Main: Search by image
+  Main->>Search: Create search request
+  Search->>Search: Extract query features
+  Search->>Model: Create query embedding
+  Search->>DB: Load indexed corpus
+  Search->>Search: Rank by visual score
+  Search->>Search: Rerank top candidates
+  alt Online enhancement enabled
+    Search->>OpenAI: Enrich top local candidates
+  end
+  Search-->>UI: Return ranked results

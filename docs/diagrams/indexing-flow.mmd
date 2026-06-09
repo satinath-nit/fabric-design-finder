@@ -1,0 +1,19 @@
+sequenceDiagram
+  participant UI as Renderer UI
+  participant Main as Electron Main
+  participant Indexer as Indexing Service
+  participant Disk as Local Disk
+  participant DB as SQLite
+  participant Model as ONNX Model Service
+
+  UI->>Main: Start indexing
+  Main->>Indexer: Create index job
+  Indexer->>Disk: Scan image files
+  Indexer->>Indexer: Infer metadata
+  Indexer->>Indexer: Generate thumbnail
+  Indexer->>Indexer: Extract visual features
+  Indexer->>Model: Generate AI embedding
+  Indexer->>DB: Save design and features
+  UI->>Main: Request index status
+  Main->>DB: Read latest job status
+  DB-->>UI: Return progress and errors

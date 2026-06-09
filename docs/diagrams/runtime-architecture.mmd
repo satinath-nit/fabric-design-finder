@@ -1,0 +1,15 @@
+graph LR
+  USER[User] --> UI[React Renderer]
+  UI --> PRELOAD[Electron Preload API]
+  PRELOAD --> MAIN[Electron Main Process]
+  MAIN --> INDEXER[Indexing Service]
+  MAIN --> SEARCH[Search Service]
+  MAIN --> DB[SQLite Database]
+  INDEXER --> FEATURES[Sharp Feature Extraction]
+  INDEXER --> MODEL[OpenCLIP ONNX Model Service]
+  INDEXER --> DISK[Local Folders And Drives]
+  SEARCH --> FEATURES
+  SEARCH --> MODEL
+  SEARCH --> DB
+  SEARCH --> OPENAI[Optional OpenAI Enhancement]
+  SEARCH --> DISK
