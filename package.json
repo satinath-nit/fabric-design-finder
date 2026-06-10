@@ -12,6 +12,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --config vite.renderer.config.ts",
     "test": "npm run rebuild:node && vitest run",
+    "download:model": "node scripts/download-openclip-model.mjs",
     "rebuild:node": "npm rebuild better-sqlite3 --runtime=node",
     "rebuild:electron": "electron-builder install-app-deps",
     "dist:mac": "npm run build && electron-builder --mac",

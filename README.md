@@ -142,6 +142,12 @@ The app expects an OpenCLIP-compatible ONNX image encoder here:
 assets/models/openclip/model.onnx
 ```
 
+Download the recommended OpenCLIP model with:
+
+```bash
+npm run download:model
+```
+
 If the model is present, Electron Builder packages it into the installed app under `resources/models/openclip/model.onnx`.
 
 If the model is not present, the app still works using deterministic local visual embeddings. This is useful for development and functional testing, but production matching should use the bundled OpenCLIP ONNX model.

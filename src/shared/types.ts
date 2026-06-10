@@ -165,6 +165,7 @@ export interface FabricFinderApi {
   pauseIndex(): Promise<IndexJobStatus>;
   resumeIndex(): Promise<IndexJobStatus>;
   cancelIndex(): Promise<IndexJobStatus>;
+  deleteIndex(): Promise<LibraryStats>;
   getIndexStatus(): Promise<IndexJobStatus>;
   listIndexFailures(jobId?: number): Promise<IndexFailureList>;
   listDesigns(request?: DesignListRequest): Promise<DesignListResponse>;

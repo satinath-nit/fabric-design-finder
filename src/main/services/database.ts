@@ -51,6 +51,7 @@ export interface CorpusItem {
   fastVector: Float32Array;
   aiEmbedding: Float32Array;
   perceptualHash: string;
+  modelVersion: string;
 }
 
 interface DesignRow {
@@ -344,6 +345,18 @@ export class DatabaseService {
     this.invalidateCorpus();
   }
 
+  clearIndexData(): void {
+    const clear = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM index_failures").run();
+      this.db.prepare("DELETE FROM index_jobs").run();
+      this.db.prepare("DELETE FROM image_features").run();
+      this.db.prepare("DELETE FROM designs").run();
+      this.db.prepare("UPDATE scan_roots SET last_scanned_at = NULL").run();
+    });
+    clear();
+    this.invalidateCorpus();
+  }
+
   getDesign(id: number): DesignRecord | null {
     const row = this.db.prepare("SELECT * FROM designs WHERE id = ?").get(id) as DesignRow | undefined;
     return row ? mapDesign(row) : null;
@@ -397,17 +410,26 @@ export class DatabaseService {
           d.*,
           f.fast_vector,
           f.ai_embedding,
-          f.perceptual_hash
+          f.perceptual_hash,
+          f.model_version
         FROM designs d
         JOIN image_features f ON f.design_id = d.id`
       )
-      .all() as Array<DesignRow & { fast_vector: Buffer; ai_embedding: Buffer | null; perceptual_hash: string }>;
+      .all() as Array<
+        DesignRow & {
+          fast_vector: Buffer;
+          ai_embedding: Buffer | null;
+          perceptual_hash: string;
+          model_version: string;
+        }
+      >;
 
     this.corpusCache = rows.map((row) => ({
       design: mapDesign(row),
       fastVector: bufferToVector(row.fast_vector),
       aiEmbedding: bufferToVector(row.ai_embedding),
-      perceptualHash: row.perceptual_hash
+      perceptualHash: row.perceptual_hash,
+      modelVersion: row.model_version
     }));
 
     return this.corpusCache;

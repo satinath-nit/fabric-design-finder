@@ -58,7 +58,9 @@ export class SearchService {
     let results: SearchResult[] = designFocusedRanked
       .map((candidate) => {
         const aiScore =
-          queryEmbedding.length > 0 && candidate.item.aiEmbedding.length > 0
+          candidate.item.modelVersion === modelStatus.modelVersion &&
+          queryEmbedding.length > 0 &&
+          candidate.item.aiEmbedding.length > 0
             ? cosineSimilarity(queryEmbedding, candidate.item.aiEmbedding)
             : undefined;
         const aiWeight = modelStatus.mode === "onnx" ? 0.55 : 0.05;

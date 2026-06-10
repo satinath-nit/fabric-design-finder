@@ -66,6 +66,7 @@ const browserFallback: FabricFinderApi = {
   pauseIndex: async () => fallbackJob,
   resumeIndex: async () => fallbackJob,
   cancelIndex: async () => fallbackJob,
+  deleteIndex: async () => fallbackStats,
   getIndexStatus: async () => fallbackJob,
   listIndexFailures: async () => fallbackFailures,
   listDesigns: async () => fallbackDesignList,

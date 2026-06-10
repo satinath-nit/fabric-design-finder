@@ -10,6 +10,7 @@ const api: FabricFinderApi = {
   pauseIndex: () => ipcRenderer.invoke("index:pause"),
   resumeIndex: () => ipcRenderer.invoke("index:resume"),
   cancelIndex: () => ipcRenderer.invoke("index:cancel"),
+  deleteIndex: () => ipcRenderer.invoke("index:delete"),
   getIndexStatus: () => ipcRenderer.invoke("index:status"),
   listIndexFailures: (jobId?: number) => ipcRenderer.invoke("index:failures", jobId),
   searchByImage: (request: SearchRequest) => ipcRenderer.invoke("search:by-image", request),

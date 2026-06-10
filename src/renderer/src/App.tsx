@@ -14,6 +14,7 @@ import {
   Settings,
   Sparkles,
   Square,
+  Trash2,
   Upload,
   X
 } from "lucide-react";
@@ -143,6 +144,19 @@ export default function App(): JSX.Element {
     setSettings(await fabricApi.updateSettings(patch));
   }
 
+  async function deleteIndex(): Promise<void> {
+    setError("");
+    try {
+      await fabricApi.deleteIndex();
+      setQueryImage("");
+      setSearchResponse(null);
+      setSelectedResult(null);
+      await Promise.all([refreshRoots(), refreshStats(), refreshSettings(), refreshIndexStatus()]);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+    }
+  }
+
   function handleDrop(event: React.DragEvent<HTMLDivElement>): void {
     event.preventDefault();
     const file = event.dataTransfer.files[0] as (File & { path?: string }) | undefined;
@@ -199,12 +213,16 @@ export default function App(): JSX.Element {
             <span className="subtle">{statusLine(indexStatus)}</span>
           </div>
           <div className="topbar-actions">
-            <button className="icon-button" onClick={addRoots} title="Add folder or drive">
-              <FolderOpen size={18} />
-            </button>
-            <button className="primary" onClick={() => void pickImageAndSearch()}>
-              <ImagePlus size={18} /> Choose Image
-            </button>
+            {view === "library" ? (
+              <button className="icon-button" onClick={addRoots} title="Add folder or drive">
+                <FolderOpen size={18} />
+              </button>
+            ) : null}
+            {view === "search" ? (
+              <button className="primary" onClick={() => void pickImageAndSearch()}>
+                <ImagePlus size={18} /> Choose Image
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -247,7 +265,13 @@ export default function App(): JSX.Element {
         {view === "designs" ? <DesignsView /> : null}
 
         {view === "settings" && settings && stats ? (
-          <SettingsView settings={settings} stats={stats} onUpdate={updateSettings} />
+          <SettingsView
+            settings={settings}
+            stats={stats}
+            indexStatus={indexStatus}
+            onUpdate={updateSettings}
+            onDeleteIndex={deleteIndex}
+          />
         ) : null}
       </main>
     </div>
@@ -644,9 +668,31 @@ function LibraryView(props: {
 function SettingsView(props: {
   settings: AppSettings;
   stats: LibraryStats;
+  indexStatus: IndexJobStatus;
   onUpdate: (patch: Partial<AppSettings> & { openAiApiKey?: string }) => Promise<void>;
+  onDeleteIndex: () => Promise<void>;
 }): JSX.Element {
   const [apiKey, setApiKey] = useState("");
+  const [deletingIndex, setDeletingIndex] = useState(false);
+  const deleteDisabled =
+    deletingIndex || props.indexStatus.state === "running" || props.indexStatus.state === "paused";
+
+  async function confirmDeleteIndex(): Promise<void> {
+    const confirmed = window.confirm(
+      `Delete the local index at ${props.settings.indexLocation}?\n\n` +
+        `This removes ${formatNumber(props.stats.totalDesigns)} indexed designs, ` +
+        `${formatNumber(props.stats.totalAiEmbeddings)} AI vectors, job history, and generated thumbnails. ` +
+        "Your scan roots and settings will be kept so you can rebuild the index."
+    );
+    if (!confirmed) return;
+
+    setDeletingIndex(true);
+    try {
+      await props.onDeleteIndex();
+    } finally {
+      setDeletingIndex(false);
+    }
+  }
 
   return (
     <section className="settings-layout">
@@ -702,6 +748,13 @@ function SettingsView(props: {
         <div>
           <h2>Index Location</h2>
           <span>{props.settings.indexLocation}</span>
+          <small className="warning-copy">Deletes local index data only; source image files are not touched.</small>
+        </div>
+        <div className="index-location-actions">
+          <button className="danger" disabled={deleteDisabled} onClick={() => void confirmDeleteIndex()}>
+            {deletingIndex ? <Loader2 className="spin" size={18} /> : <Trash2 size={18} />}
+            Delete Index
+          </button>
         </div>
       </div>
     </section>

@@ -16,6 +16,7 @@ let database: DatabaseService;
 let indexingService: IndexingService;
 let searchService: SearchService;
 let modelService: ModelService;
+let thumbnailDirectory: string;
 
 const isDevelopment = !app.isPackaged;
 
@@ -35,7 +36,7 @@ async function bootstrapServices(): Promise<void> {
   const userDataPath = app.getPath("userData");
   await ensureDirectory(userDataPath);
   const databasePath = path.join(userDataPath, "fabric-design-finder.db");
-  const thumbnailDirectory = path.join(userDataPath, "thumbnails");
+  thumbnailDirectory = path.join(userDataPath, "thumbnails");
 
   database = new DatabaseService(databasePath);
   modelService = new ModelService({
@@ -108,6 +109,17 @@ function registerIpcHandlers(): void {
   ipcMain.handle("index:pause", () => indexingService.pause());
   ipcMain.handle("index:resume", () => indexingService.resume());
   ipcMain.handle("index:cancel", () => indexingService.cancel());
+  ipcMain.handle("index:delete", async () => {
+    const status = indexingService.status();
+    if (status.state === "running" || status.state === "paused") {
+      throw new Error("Stop indexing before deleting the local index.");
+    }
+
+    database.clearIndexData();
+    await fs.rm(thumbnailDirectory, { recursive: true, force: true });
+    await ensureDirectory(thumbnailDirectory);
+    return database.getLibraryStats(modelService.getStatus());
+  });
   ipcMain.handle("index:status", () => indexingService.status());
   ipcMain.handle("index:failures", (_event, jobId?: number) => database.listIndexFailures(jobId));
   ipcMain.handle("search:by-image", (_event, request: SearchRequest) => searchService.search(request));
