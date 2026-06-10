@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
+  ChevronDown,
   Database,
   FolderOpen,
   Gauge,
@@ -17,6 +19,8 @@ import {
 } from "lucide-react";
 import type {
   AppSettings,
+  DesignRecord,
+  IndexFailureList,
   IndexJobStatus,
   LibraryStats,
   PickedRoot,
@@ -27,7 +31,9 @@ import type {
 import { fabricApi } from "./fabricApi";
 import "./styles/app.css";
 
-type View = "search" | "library" | "settings";
+type View = "search" | "library" | "designs" | "settings";
+
+const DESIGN_PAGE_SIZE = 100;
 
 const emptyJob: IndexJobStatus = {
   id: 0,
@@ -169,7 +175,13 @@ export default function App(): JSX.Element {
         </nav>
 
         <div className="sidebar-stats">
-          <Metric label="Designs" value={formatNumber(stats?.totalDesigns ?? 0)} />
+          <Metric
+            label="Designs"
+            value={formatNumber(stats?.totalDesigns ?? 0)}
+            active={view === "designs"}
+            title="View designs"
+            onClick={() => setView("designs")}
+          />
           <Metric label="Roots" value={formatNumber(stats?.totalRoots ?? 0)} />
           <Metric label="AI vectors" value={formatNumber(stats?.totalAiEmbeddings ?? 0)} />
         </div>
@@ -183,7 +195,7 @@ export default function App(): JSX.Element {
       <main className="workspace">
         <header className="topbar">
           <div>
-            <h1>{view === "search" ? "Design Search" : view === "library" ? "Image Library" : "Settings"}</h1>
+            <h1>{viewTitle(view)}</h1>
             <span className="subtle">{statusLine(indexStatus)}</span>
           </div>
           <div className="topbar-actions">
@@ -232,11 +244,140 @@ export default function App(): JSX.Element {
           />
         ) : null}
 
+        {view === "designs" ? <DesignsView /> : null}
+
         {view === "settings" && settings && stats ? (
           <SettingsView settings={settings} stats={stats} onUpdate={updateSettings} />
         ) : null}
       </main>
     </div>
+  );
+}
+
+function DesignsView(): JSX.Element {
+  const [search, setSearch] = useState("");
+  const [designs, setDesigns] = useState<DesignRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [listError, setListError] = useState("");
+  const requestVersionRef = useRef(0);
+
+  useEffect(() => {
+    const version = requestVersionRef.current + 1;
+    requestVersionRef.current = version;
+    const timer = window.setTimeout(() => {
+      void loadDesignPage(search, 0, "replace", version);
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  async function loadDesignPage(
+    query: string,
+    offset: number,
+    mode: "replace" | "append",
+    version = requestVersionRef.current
+  ): Promise<void> {
+    if (mode === "replace") setLoading(true);
+    else setLoadingMore(true);
+    setListError("");
+
+    try {
+      const response = await fabricApi.listDesigns({
+        search: query,
+        offset,
+        limit: DESIGN_PAGE_SIZE
+      });
+      if (version !== requestVersionRef.current) return;
+
+      setDesigns((current) => (mode === "replace" ? response.designs : [...current, ...response.designs]));
+      setTotal(response.total);
+      setHasMore(response.hasMore);
+    } catch (loadError) {
+      if (version === requestVersionRef.current) {
+        setListError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (version === requestVersionRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
+  }
+
+  function handleScroll(event: React.UIEvent<HTMLDivElement>): void {
+    const element = event.currentTarget;
+    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 280;
+    if (!nearBottom || loading || loadingMore || !hasMore) return;
+    void loadDesignPage(search, designs.length, "append");
+  }
+
+  return (
+    <section className="designs-layout">
+      <div className="designs-toolbar">
+        <label className="design-search">
+          <Search size={18} />
+          <input
+            value={search}
+            placeholder="Search file name, design number, or design name"
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+        </label>
+        <span>
+          {loading ? "Loading" : `${formatNumber(designs.length)} of ${formatNumber(total)} designs`}
+        </span>
+      </div>
+
+      {listError ? <div className="error-banner">{listError}</div> : null}
+
+      <div className="designs-scroller" onScroll={handleScroll}>
+        {loading && designs.length === 0 ? (
+          <div className="designs-empty">
+            <Loader2 className="spin" size={22} />
+          </div>
+        ) : designs.length ? (
+          <div className="designs-grid">
+            {designs.map((design) => (
+              <DesignCard design={design} key={design.id} />
+            ))}
+          </div>
+        ) : (
+          <div className="designs-empty">No designs found.</div>
+        )}
+
+        {loadingMore ? (
+          <div className="designs-load-more">
+            <Loader2 className="spin" size={18} />
+            <span>Loading more</span>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function DesignCard({ design }: { design: DesignRecord }): JSX.Element {
+  const fileName = design.filePath.split(/[\\/]/).pop() || design.filePath;
+
+  return (
+    <article className="design-card">
+      <LocalImage filePath={design.thumbnailPath || design.filePath} alt="" />
+      <div className="design-card-body">
+        <strong title={design.designNumber}>{design.designNumber}</strong>
+        <span title={design.designName}>{design.designName}</span>
+        <small title={design.filePath}>{fileName}</small>
+      </div>
+      <div className="design-card-actions">
+        <button onClick={() => void fabricApi.openFile(design.id)}>
+          <ImagePlus size={16} /> Open
+        </button>
+        <button onClick={() => void fabricApi.openFolder(design.id)}>
+          <FolderOpen size={16} /> Folder
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -357,6 +498,35 @@ function LibraryView(props: {
 }): JSX.Element {
   const running = props.status.state === "running";
   const paused = props.status.state === "paused";
+  const [failuresExpanded, setFailuresExpanded] = useState(false);
+  const [failureList, setFailureList] = useState<IndexFailureList | null>(null);
+  const [loadingFailures, setLoadingFailures] = useState(false);
+
+  useEffect(() => {
+    if (props.status.failed === 0) {
+      setFailuresExpanded(false);
+      setFailureList(null);
+    }
+  }, [props.status.id, props.status.failed]);
+
+  useEffect(() => {
+    if (!failuresExpanded || props.status.failed === 0) return;
+
+    let cancelled = false;
+    setLoadingFailures(true);
+    void fabricApi
+      .listIndexFailures(props.status.id || undefined)
+      .then((list) => {
+        if (!cancelled) setFailureList(list);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFailures(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [failuresExpanded, props.status.id, props.status.failed, props.status.processed]);
 
   return (
     <section className="library-layout">
@@ -390,8 +560,67 @@ function LibraryView(props: {
           <Metric label="Found" value={formatNumber(props.status.totalDiscovered)} />
           <Metric label="Indexed" value={formatNumber(props.status.indexed)} />
           <Metric label="Skipped" value={formatNumber(props.status.skipped)} />
-          <Metric label="Failed" value={formatNumber(props.status.failed)} />
+          <Metric
+            label="Failed"
+            value={formatNumber(props.status.failed)}
+            active={failuresExpanded}
+            title={props.status.failed > 0 ? "Show failed files" : undefined}
+            onClick={
+              props.status.failed > 0 ? () => setFailuresExpanded((current) => !current) : undefined
+            }
+          />
         </div>
+
+        {props.status.failed > 0 && failuresExpanded ? (
+          <div className="failure-details">
+            <div className="failure-details-header">
+              <div>
+                <AlertTriangle size={17} />
+                <strong>Failed Files</strong>
+                <span>
+                  {loadingFailures
+                    ? "Loading"
+                    : failureList
+                      ? `Showing ${failureList.failures.length} of ${failureList.total}`
+                      : ""}
+                </span>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => void fabricApi.listIndexFailures(props.status.id || undefined).then(setFailureList)}
+                title="Refresh failed files"
+              >
+                <RefreshCw size={16} />
+              </button>
+            </div>
+
+            {loadingFailures ? (
+              <div className="failure-empty">
+                <Loader2 className="spin" size={18} />
+                <span>Loading failed files</span>
+              </div>
+            ) : failureList?.failures.length ? (
+              <div className="failure-table">
+                <div className="failure-row failure-row-header">
+                  <span>File</span>
+                  <span>Reason</span>
+                  <span>Step</span>
+                  <span>Time</span>
+                </div>
+                {failureList.failures.map((failure) => (
+                  <div className="failure-row" key={failure.id}>
+                    <span title={formatFailureTooltip(failure)}>{failure.filePath}</span>
+                    <span title={failure.reason}>{failure.reason}</span>
+                    <span>{failure.phase}</span>
+                    <span>{formatDateTime(failure.failedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="failure-empty">No failure details are stored for this job.</div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div className="roots-table">
@@ -479,13 +708,36 @@ function SettingsView(props: {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="metric">
+function Metric({
+  label,
+  value,
+  active = false,
+  title,
+  onClick
+}: {
+  label: string;
+  value: string;
+  active?: boolean;
+  title?: string;
+  onClick?: () => void;
+}): JSX.Element {
+  const content = (
+    <>
       <span>{label}</span>
       <strong>{value}</strong>
-    </div>
+      {onClick ? <ChevronDown className="metric-chevron" size={16} /> : null}
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button className={`metric metric-action ${active ? "active" : ""}`} onClick={onClick} title={title}>
+        {content}
+      </button>
+    );
+  }
+
+  return <div className="metric">{content}</div>;
 }
 
 function LocalImage({ filePath, alt, className }: { filePath: string; alt: string; className?: string }): JSX.Element {
@@ -522,6 +774,21 @@ function LocalImage({ filePath, alt, className }: { filePath: string; alt: strin
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat().format(value);
+}
+
+function formatDateTime(value: number): string {
+  return new Date(value).toLocaleString();
+}
+
+function formatFailureTooltip(failure: IndexFailureList["failures"][number]): string {
+  return `${failure.filePath}\n\nReason: ${failure.reason}\nStep: ${failure.phase}`;
+}
+
+function viewTitle(view: View): string {
+  if (view === "search") return "Design Search";
+  if (view === "library") return "Image Library";
+  if (view === "designs") return "Designs";
+  return "Settings";
 }
 
 function statusLine(status: IndexJobStatus): string {

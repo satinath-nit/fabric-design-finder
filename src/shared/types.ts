@@ -1,7 +1,15 @@
 export type SupportedImageExtension =
+  | ".avif"
+  | ".gif"
+  | ".heic"
+  | ".heif"
+  | ".jp2"
+  | ".j2k"
+  | ".jxl"
   | ".jpg"
   | ".jpeg"
   | ".png"
+  | ".svg"
   | ".webp"
   | ".bmp"
   | ".tif"
@@ -59,6 +67,35 @@ export interface IndexJobStatus {
   startedAt?: number;
   completedAt?: number;
   message?: string;
+}
+
+export interface IndexFailureRecord {
+  id: number;
+  jobId: number;
+  filePath: string;
+  reason: string;
+  phase: string;
+  failedAt: number;
+}
+
+export interface IndexFailureList {
+  jobId: number;
+  total: number;
+  failures: IndexFailureRecord[];
+}
+
+export interface DesignListRequest {
+  search?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface DesignListResponse {
+  designs: DesignRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 }
 
 export interface SearchResult {
@@ -129,6 +166,8 @@ export interface FabricFinderApi {
   resumeIndex(): Promise<IndexJobStatus>;
   cancelIndex(): Promise<IndexJobStatus>;
   getIndexStatus(): Promise<IndexJobStatus>;
+  listIndexFailures(jobId?: number): Promise<IndexFailureList>;
+  listDesigns(request?: DesignListRequest): Promise<DesignListResponse>;
   searchByImage(request: SearchRequest): Promise<SearchResponse>;
   getDesign(id: number): Promise<DesignRecord | null>;
   openFile(id: number): Promise<void>;

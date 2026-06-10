@@ -1,7 +1,7 @@
 import type { SearchRequest, SearchResponse, SearchResult } from "../../shared/types";
 import { AI_RERANK_CANDIDATES, DEFAULT_SEARCH_LIMIT } from "../../shared/constants";
 import { DatabaseService } from "./database";
-import { extractFastFeatures } from "./imageFeatures";
+import { extractFastFeatureVariants } from "./imageFeatures";
 import { ModelService } from "./modelService";
 import { OpenAiEnhancer } from "./openAiEnhancer";
 import { cosineSimilarity, hammingDistance, scoreFromHashDistance } from "./vector";
@@ -16,33 +16,56 @@ export class SearchService {
   async search(request: SearchRequest): Promise<SearchResponse> {
     const startedAt = Date.now();
     const limit = request.limit ?? DEFAULT_SEARCH_LIMIT;
-    const queryFeatures = await extractFastFeatures(request.imagePath);
-    const queryEmbedding = await this.modelService.embedImage(request.imagePath, queryFeatures.fastVector);
+    const queryVariants = await extractFastFeatureVariants(request.imagePath);
+    const primaryQuery = queryVariants[0];
+    if (!primaryQuery) throw new Error("Could not extract visual features from the query image.");
+    const modelStatus = this.modelService.getStatus();
+    const queryEmbedding = await this.modelService.embedImage(request.imagePath, primaryQuery.fastVector);
     const corpus = this.database.getCorpus();
+    const initialCandidateLimit = Math.max(AI_RERANK_CANDIDATES * 2, limit);
 
     const fastRanked = corpus
       .map((item) => {
-        const fastScore = cosineSimilarity(queryFeatures.fastVector, item.fastVector);
-        const hashDistance = hammingDistance(queryFeatures.perceptualHash, item.perceptualHash);
-        const hashScore = scoreFromHashDistance(hashDistance);
-        const combinedFastScore = fastScore * 0.72 + hashScore * 0.28;
+        const bestFastMatch = scoreAgainstQueryVariants(queryVariants, item);
+
         return {
           design: item.design,
-          fastScore: combinedFastScore,
-          hashDistance,
+          fastScore: bestFastMatch.fastScore,
+          hashDistance: bestFastMatch.hashDistance,
           item
         };
       })
       .sort((a, b) => b.fastScore - a.fastScore)
+      .slice(0, initialCandidateLimit);
+
+    const designQueryVariants = await extractFastFeatureVariants(request.imagePath, {
+      rotations: [0, 90, 180, 270]
+    });
+    const designFocusedRanked = fastRanked
+      .map((candidate) => {
+        const rotatedMatch = scoreAgainstQueryVariants(designQueryVariants, candidate.item);
+        return rotatedMatch.fastScore > candidate.fastScore
+          ? {
+              ...candidate,
+              fastScore: rotatedMatch.fastScore,
+              hashDistance: rotatedMatch.hashDistance
+            }
+          : candidate;
+      })
+      .sort((a, b) => b.fastScore - a.fastScore)
       .slice(0, Math.max(AI_RERANK_CANDIDATES, limit));
 
-    let results: SearchResult[] = fastRanked
+    let results: SearchResult[] = designFocusedRanked
       .map((candidate) => {
         const aiScore =
           queryEmbedding.length > 0 && candidate.item.aiEmbedding.length > 0
             ? cosineSimilarity(queryEmbedding, candidate.item.aiEmbedding)
             : undefined;
-        const score = aiScore === undefined ? candidate.fastScore : candidate.fastScore * 0.45 + aiScore * 0.55;
+        const aiWeight = modelStatus.mode === "onnx" ? 0.55 : 0.05;
+        const score =
+          aiScore === undefined
+            ? candidate.fastScore
+            : candidate.fastScore * (1 - aiWeight) + aiScore * aiWeight;
         return {
           design: candidate.design,
           score,
@@ -75,9 +98,30 @@ export class SearchService {
 
     return {
       queryImagePath: request.imagePath,
-      modelStatus: this.modelService.getStatus(),
+      modelStatus,
       elapsedMs: Date.now() - startedAt,
       results
     };
   }
+}
+
+function scoreAgainstQueryVariants(
+  queryVariants: Array<{ fastVector: number[]; perceptualHash: string }>,
+  item: { fastVector: ArrayLike<number>; perceptualHash: string }
+): { fastScore: number; hashDistance: number } {
+  return queryVariants.reduce(
+    (best, queryFeatures) => {
+      const vectorScore = cosineSimilarity(queryFeatures.fastVector, item.fastVector);
+      const hashDistance = hammingDistance(queryFeatures.perceptualHash, item.perceptualHash);
+      const hashScore = scoreFromHashDistance(hashDistance);
+      const combinedFastScore = vectorScore * 0.82 + hashScore * 0.18;
+      return combinedFastScore > best.fastScore
+        ? {
+            fastScore: combinedFastScore,
+            hashDistance
+          }
+        : best;
+    },
+    { fastScore: -1, hashDistance: 64 }
+  );
 }

@@ -126,6 +126,32 @@ button.primary {
   padding: 12px;
   display: grid;
   gap: 3px;
+  min-width: 0;
+  text-align: left;
+}
+
+.metric-action {
+  height: auto;
+  min-height: 70px;
+  justify-content: stretch;
+  position: relative;
+}
+
+.metric-action.active {
+  border-color: #176b65;
+  box-shadow: 0 0 0 2px rgba(23, 107, 101, 0.14);
+}
+
+.metric-chevron {
+  position: absolute;
+  right: 10px;
+  top: 12px;
+  color: #667480;
+  transition: transform 160ms ease;
+}
+
+.metric-action.active .metric-chevron {
+  transform: rotate(180deg);
 }
 
 .sidebar .metric {
@@ -219,9 +245,137 @@ button.primary {
 
 .query-panel,
 .results-panel,
+.designs-layout,
 .library-layout,
 .settings-layout {
   min-width: 0;
+}
+
+.designs-layout {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+.designs-toolbar {
+  min-height: 58px;
+  background: #ffffff;
+  border: 1px solid #d8e0e4;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(280px, 520px) 1fr;
+  gap: 14px;
+  align-items: center;
+}
+
+.designs-toolbar > span {
+  justify-self: end;
+  color: #667480;
+  font-size: 13px;
+}
+
+.design-search {
+  height: 38px;
+  border: 1px solid #c9d1d8;
+  border-radius: 7px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  background: #ffffff;
+  color: #667480;
+}
+
+.design-search svg {
+  justify-self: center;
+}
+
+.design-search input {
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  outline: 0;
+  padding: 0 10px 0 0;
+  color: #20262d;
+}
+
+.designs-scroller {
+  min-height: 360px;
+  max-height: calc(100vh - 166px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.designs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.design-card {
+  min-width: 0;
+  height: 268px;
+  background: #ffffff;
+  border: 1px solid #d8e0e4;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 150px 1fr auto;
+}
+
+.design-card img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: #edf1f2;
+}
+
+.design-card-body {
+  min-width: 0;
+  padding: 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.design-card-body strong,
+.design-card-body span,
+.design-card-body small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.design-card-body span,
+.design-card-body small {
+  color: #667480;
+  font-size: 12px;
+}
+
+.design-card-actions {
+  border-top: 1px solid #e4eaed;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.design-card-actions button {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.designs-load-more,
+.designs-empty {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #667480;
+  font-size: 13px;
 }
 
 .drop-zone {
@@ -419,6 +573,82 @@ button.primary {
 .progress-band {
   display: grid;
   gap: 12px;
+}
+
+.failure-details {
+  border-top: 1px solid #e4eaed;
+  padding-top: 12px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.failure-details-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.failure-details-header > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #8f241b;
+}
+
+.failure-details-header span,
+.failure-empty {
+  color: #667480;
+  font-size: 13px;
+}
+
+.failure-table {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid #e4eaed;
+  border-radius: 8px;
+}
+
+.failure-row {
+  min-width: 980px;
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(280px, 1fr) 180px 180px;
+  gap: 12px;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 12px;
+  border-top: 1px solid #edf1f2;
+  font-size: 13px;
+}
+
+.failure-row:first-child {
+  border-top: 0;
+}
+
+.failure-row-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #edf1f2;
+  color: #667480;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.failure-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.failure-empty {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
 }
 
 .progress-track {

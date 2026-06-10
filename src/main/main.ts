@@ -2,14 +2,14 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
-import type { AppSettings, PickedRoot, SearchRequest } from "../shared/types";
+import type { AppSettings, DesignListRequest, PickedRoot, SearchRequest } from "../shared/types";
 import { SUPPORTED_IMAGE_EXTENSIONS } from "../shared/constants";
 import { DatabaseService } from "./services/database";
 import { IndexingService } from "./services/indexingService";
 import { ModelService } from "./services/modelService";
 import { OpenAiEnhancer } from "./services/openAiEnhancer";
 import { SearchService } from "./services/searchService";
-import { ensureDirectory } from "./services/imageFeatures";
+import { createImagePreview, ensureDirectory } from "./services/imageFeatures";
 
 let mainWindow: BrowserWindow | null = null;
 let database: DatabaseService;
@@ -109,8 +109,10 @@ function registerIpcHandlers(): void {
   ipcMain.handle("index:resume", () => indexingService.resume());
   ipcMain.handle("index:cancel", () => indexingService.cancel());
   ipcMain.handle("index:status", () => indexingService.status());
+  ipcMain.handle("index:failures", (_event, jobId?: number) => database.listIndexFailures(jobId));
   ipcMain.handle("search:by-image", (_event, request: SearchRequest) => searchService.search(request));
   ipcMain.handle("design:get", (_event, id: number) => database.getDesign(id));
+  ipcMain.handle("design:list", (_event, request?: DesignListRequest) => database.listDesigns(request));
   ipcMain.handle("design:open-file", async (_event, id: number) => {
     const design = database.getDesign(id);
     if (!design) throw new Error("Design was not found.");
@@ -123,6 +125,11 @@ function registerIpcHandlers(): void {
     shell.showItemInFolder(design.filePath);
   });
   ipcMain.handle("image:data-url", async (_event, filePath: string) => {
+    if (needsConvertedPreview(filePath)) {
+      const preview = await createImagePreview(filePath);
+      return `data:${preview.mime};base64,${preview.bytes.toString("base64")}`;
+    }
+
     const bytes = await fs.readFile(filePath);
     return `data:${mimeForPath(filePath)};base64,${bytes.toString("base64")}`;
   });
@@ -151,8 +158,23 @@ function isDriveRoot(rootPath: string): boolean {
 
 function mimeForPath(filePath: string): string {
   switch (path.extname(filePath).toLowerCase()) {
+    case ".avif":
+      return "image/avif";
+    case ".gif":
+      return "image/gif";
+    case ".heic":
+      return "image/heic";
+    case ".heif":
+      return "image/heif";
+    case ".jp2":
+    case ".j2k":
+      return "image/jp2";
+    case ".jxl":
+      return "image/jxl";
     case ".png":
       return "image/png";
+    case ".svg":
+      return "image/svg+xml";
     case ".webp":
       return "image/webp";
     case ".bmp":
@@ -163,6 +185,12 @@ function mimeForPath(filePath: string): string {
     default:
       return "image/jpeg";
   }
+}
+
+function needsConvertedPreview(filePath: string): boolean {
+  return [".bmp", ".heic", ".heif", ".jp2", ".j2k", ".jxl", ".tif", ".tiff"].includes(
+    path.extname(filePath).toLowerCase()
+  );
 }
 
 app.whenReady().then(async () => {

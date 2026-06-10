@@ -1,7 +1,11 @@
 import Database from "better-sqlite3";
 import type {
   AppSettings,
+  DesignListRequest,
+  DesignListResponse,
   DesignRecord,
+  IndexFailureList,
+  IndexFailureRecord,
   IndexJobState,
   IndexJobStatus,
   LibraryStats,
@@ -33,6 +37,13 @@ export interface FeatureUpsertInput {
   perceptualHash: string;
   featureVersion: string;
   modelVersion: string;
+}
+
+export interface IndexFailureInput {
+  jobId: number;
+  filePath: string;
+  reason: string;
+  phase: string;
 }
 
 export interface CorpusItem {
@@ -80,6 +91,15 @@ interface JobRow {
   started_at: number | null;
   completed_at: number | null;
   message: string | null;
+}
+
+interface IndexFailureRow {
+  id: number;
+  job_id: number;
+  file_path: string;
+  reason: string;
+  phase: string;
+  failed_at: number;
 }
 
 export class DatabaseService {
@@ -196,6 +216,44 @@ export class DatabaseService {
         };
   }
 
+  recordIndexFailure(input: IndexFailureInput): IndexFailureRecord {
+    const result = this.db
+      .prepare(
+        `INSERT INTO index_failures (job_id, file_path, reason, phase, failed_at)
+         VALUES (@jobId, @filePath, @reason, @phase, @failedAt)`
+      )
+      .run({ ...input, failedAt: Date.now() });
+
+    const row = this.db
+      .prepare("SELECT * FROM index_failures WHERE id = ?")
+      .get(Number(result.lastInsertRowid)) as IndexFailureRow;
+    return mapIndexFailure(row);
+  }
+
+  listIndexFailures(jobId?: number, limit = 500): IndexFailureList {
+    const resolvedJobId = jobId ?? this.getLatestIndexJob().id;
+    if (!resolvedJobId) return { jobId: 0, total: 0, failures: [] };
+
+    const countRow = this.db
+      .prepare("SELECT COUNT(*) AS total FROM index_failures WHERE job_id = ?")
+      .get(resolvedJobId) as { total: number };
+    const rows = this.db
+      .prepare(
+        `SELECT *
+         FROM index_failures
+         WHERE job_id = ?
+         ORDER BY id DESC
+         LIMIT ?`
+      )
+      .all(resolvedJobId, limit) as IndexFailureRow[];
+
+    return {
+      jobId: resolvedJobId,
+      total: countRow.total,
+      failures: rows.map(mapIndexFailure)
+    };
+  }
+
   findDesignByPath(filePath: string): DesignRecord | null {
     const row = this.db.prepare("SELECT * FROM designs WHERE file_path = ?").get(filePath) as DesignRow | undefined;
     return row ? mapDesign(row) : null;
@@ -289,6 +347,45 @@ export class DatabaseService {
   getDesign(id: number): DesignRecord | null {
     const row = this.db.prepare("SELECT * FROM designs WHERE id = ?").get(id) as DesignRow | undefined;
     return row ? mapDesign(row) : null;
+  }
+
+  listDesigns(request: DesignListRequest = {}): DesignListResponse {
+    const limit = clampInteger(request.limit ?? 100, 1, 200);
+    const offset = Math.max(0, Math.floor(request.offset ?? 0));
+    const search = request.search?.trim();
+    const filter = search
+      ? `WHERE design_number LIKE @pattern ESCAPE '\\'
+          OR design_name LIKE @pattern ESCAPE '\\'
+          OR variant LIKE @pattern ESCAPE '\\'
+          OR file_path LIKE @pattern ESCAPE '\\'
+          OR folder_path LIKE @pattern ESCAPE '\\'`
+      : "";
+    const params = {
+      pattern: search ? `%${escapeLike(search)}%` : "",
+      limit,
+      offset
+    };
+
+    const countRow = this.db
+      .prepare(`SELECT COUNT(*) AS total FROM designs ${filter}`)
+      .get(params) as { total: number };
+    const rows = this.db
+      .prepare(
+        `SELECT *
+         FROM designs
+         ${filter}
+         ORDER BY design_number COLLATE NOCASE, file_path COLLATE NOCASE
+         LIMIT @limit OFFSET @offset`
+      )
+      .all(params) as DesignRow[];
+
+    return {
+      designs: rows.map(mapDesign),
+      total: countRow.total,
+      offset,
+      limit,
+      hasMore: offset + rows.length < countRow.total
+    };
   }
 
   getCorpus(): CorpusItem[] {
@@ -437,6 +534,18 @@ export class DatabaseService {
         message TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS index_failures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        phase TEXT NOT NULL,
+        failed_at INTEGER NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_index_failures_job ON index_failures(job_id);
+
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -497,4 +606,24 @@ function mapJob(row: JobRow): IndexJobStatus {
     completedAt: row.completed_at ?? undefined,
     message: row.message ?? undefined
   };
+}
+
+function mapIndexFailure(row: IndexFailureRow): IndexFailureRecord {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    filePath: row.file_path,
+    reason: row.reason,
+    phase: row.phase,
+    failedAt: row.failed_at
+  };
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }

@@ -5,7 +5,13 @@ import path from "node:path";
 import type { IndexJobStatus, PickedRoot } from "../../shared/types";
 import { FAST_FEATURE_VERSION } from "../../shared/constants";
 import { DatabaseService } from "./database";
-import { createThumbnail, ensureDirectory, extractFastFeatures, isSupportedImage } from "./imageFeatures";
+import {
+  createThumbnail,
+  ensureDirectory,
+  extractFastFeatures,
+  isSupportedImage,
+  UnsupportedImageFileError
+} from "./imageFeatures";
 import { inferMetadataFromPath } from "./metadata";
 import { ModelService } from "./modelService";
 
@@ -105,6 +111,7 @@ export class IndexingService {
       for await (const filePath of walkImageFiles(rootPath)) {
         if (this.cancelRequested) break;
         await this.waitIfPaused(jobId);
+        let phase = "Read file information";
 
         status = this.database.updateIndexJob(jobId, {
           state: "running",
@@ -113,6 +120,7 @@ export class IndexingService {
         });
 
         try {
+          phase = "Read file information";
           const stat = await fs.stat(filePath);
           const existing = this.database.findDesignByPath(filePath);
           const modifiedTime = Math.round(stat.mtimeMs);
@@ -125,10 +133,15 @@ export class IndexingService {
             continue;
           }
 
+          phase = "Extract visual features";
           const fastFeatures = await extractFastFeatures(filePath);
           const thumbnailPath = path.join(this.thumbnailDirectory, `${hashPath(filePath)}.jpg`);
+
+          phase = "Create thumbnail";
           await createThumbnail(filePath, thumbnailPath);
           const metadata = inferMetadataFromPath(filePath, rootPath);
+
+          phase = "Save design metadata";
           const design = this.database.upsertDesign({
             ...metadata,
             filePath,
@@ -140,8 +153,11 @@ export class IndexingService {
             fileSize: stat.size,
             modifiedTime
           });
+
+          phase = "Generate visual embedding";
           const aiEmbedding = await this.modelService.embedImage(filePath, fastFeatures.fastVector);
 
+          phase = "Save visual features";
           this.database.upsertFeature({
             designId: design.id,
             fastVector: fastFeatures.fastVector,
@@ -156,10 +172,28 @@ export class IndexingService {
             indexed: status.indexed + 1
           });
         } catch (error) {
+          const reason = describeIndexingError(error);
+
+          if (error instanceof UnsupportedImageFileError) {
+            status = this.database.updateIndexJob(jobId, {
+              processed: status.processed + 1,
+              skipped: status.skipped + 1,
+              message: `${path.basename(filePath)} skipped: ${reason}`
+            });
+            continue;
+          }
+
+          this.database.recordIndexFailure({
+            jobId,
+            filePath,
+            reason,
+            phase
+          });
+
           status = this.database.updateIndexJob(jobId, {
             processed: status.processed + 1,
             failed: status.failed + 1,
-            message: error instanceof Error ? error.message : String(error)
+            message: `${path.basename(filePath)}: ${reason}`
           });
         }
       }
@@ -215,4 +249,10 @@ async function* walkImageFiles(rootPath: string): AsyncGenerator<string> {
 
 function hashPath(filePath: string): string {
   return crypto.createHash("sha1").update(filePath).digest("hex");
+}
+
+function describeIndexingError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!message) return "Unknown indexing error.";
+  return message.replace(/\s+/g, " ").trim();
 }

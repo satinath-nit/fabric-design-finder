@@ -1,6 +1,8 @@
 import type {
   AppSettings,
+  DesignListResponse,
   FabricFinderApi,
+  IndexFailureList,
   IndexJobStatus,
   LibraryStats,
   ModelStatus,
@@ -33,6 +35,20 @@ const fallbackJob: IndexJobStatus = {
   failed: 0
 };
 
+const fallbackFailures: IndexFailureList = {
+  jobId: 0,
+  total: 0,
+  failures: []
+};
+
+const fallbackDesignList: DesignListResponse = {
+  designs: [],
+  total: 0,
+  offset: 0,
+  limit: 100,
+  hasMore: false
+};
+
 const fallbackStats: LibraryStats = {
   totalDesigns: 0,
   totalRoots: 0,
@@ -51,6 +67,8 @@ const browserFallback: FabricFinderApi = {
   resumeIndex: async () => fallbackJob,
   cancelIndex: async () => fallbackJob,
   getIndexStatus: async () => fallbackJob,
+  listIndexFailures: async () => fallbackFailures,
+  listDesigns: async () => fallbackDesignList,
   searchByImage: async (request): Promise<SearchResponse> => ({
     queryImagePath: request.imagePath,
     modelStatus: fallbackModel,

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppSettings, FabricFinderApi, PickedRoot, SearchRequest } from "../shared/types";
+import type { AppSettings, DesignListRequest, FabricFinderApi, PickedRoot, SearchRequest } from "../shared/types";
 
 const api: FabricFinderApi = {
   pickImage: () => ipcRenderer.invoke("dialog:pick-image"),
@@ -11,8 +11,10 @@ const api: FabricFinderApi = {
   resumeIndex: () => ipcRenderer.invoke("index:resume"),
   cancelIndex: () => ipcRenderer.invoke("index:cancel"),
   getIndexStatus: () => ipcRenderer.invoke("index:status"),
+  listIndexFailures: (jobId?: number) => ipcRenderer.invoke("index:failures", jobId),
   searchByImage: (request: SearchRequest) => ipcRenderer.invoke("search:by-image", request),
   getDesign: (id: number) => ipcRenderer.invoke("design:get", id),
+  listDesigns: (request?: DesignListRequest) => ipcRenderer.invoke("design:list", request),
   openFile: (id: number) => ipcRenderer.invoke("design:open-file", id),
   openFolder: (id: number) => ipcRenderer.invoke("design:open-folder", id),
   getImageDataUrl: (filePath: string) => ipcRenderer.invoke("image:data-url", filePath),
